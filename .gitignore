@@ -1,0 +1,10 @@
+.venv/
+data/
+.env*
+secrets*
+!secrets.example
+__pycache__/
+*.pyc
+.pytest_cache/
+.claude/
+.DS_Store

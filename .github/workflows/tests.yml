@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: pip install -r requirements.txt
+        env:
+          WITHOUT_EXTENSION: "1"  # mwparserfromhell: pure-Python build if no wheel matches
+      - run: python -m pytest -q
+      - run: python checker/smoke_test.py
