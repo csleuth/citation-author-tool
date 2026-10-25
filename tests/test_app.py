@@ -61,16 +61,16 @@ def test_reject_and_undo(client):
     client.post("/api/reject", json=dict(pageid=20, citation_id=3, reason="4"))
     assert decisions() == [(3, "dryrun", "reject")]
     assert client.get("/api/article?pos=1").json.get("end")  # article 20 left the queue
-    r = client.post("/api/undo").json
+    r = client.post("/api/undo", json={}).json
     assert r["ok"] and r["pageid"] == 20 and decisions() == []
     assert client.get("/api/article?pageid=20").json["rows"][0]["status"] == "pending"
-    assert not client.post("/api/undo").json["ok"]
+    assert not client.post("/api/undo", json={}).json["ok"]
 
 
 def test_undo_approval_rebuilds_the_article_edit(client):
     client.post("/api/approve", json=dict(pageid=10, citation_id=1))
     client.post("/api/approve", json=dict(pageid=10, citation_id=2))
-    client.post("/api/undo")
+    client.post("/api/undo", json={})
     tray = client.get("/api/status").json["tray"]
     assert len(tray) == 1 and len(tray[0]["citations"]) == 1
     a = client.get("/api/article?pageid=10").json
@@ -90,13 +90,13 @@ def test_return_to_queue_restores_citations_in_place(client):
 def test_cannot_undo_after_sending(client, monkeypatch):
     monkeypatch.setattr(wiki, "send", lambda plan, items, **kw: ("dry-run ok", "would edit"))
     client.post("/api/approve", json=dict(pageid=20, citation_id=3))
-    assert client.post("/api/send").json["ok"]
+    assert client.post("/api/send", json={}).json["ok"]
     for _ in range(100):
         st = client.get("/api/status").json
         if not st["sending"]:
             break
     assert st["tray"][0]["status"] == "dry-run ok" and not st["tray"][0]["returnable"]
-    r = client.post("/api/undo").json
+    r = client.post("/api/undo", json={}).json
     assert not r["ok"] and "already been sent" in r["message"]
 
 
@@ -109,6 +109,28 @@ def test_uneditable_citation_cannot_be_approved(client, monkeypatch):
     monkeypatch.setattr(wiki, "build_plan", plan)
     r = client.post("/api/approve", json=dict(pageid=20, citation_id=3)).json
     assert not r["ok"] and "already has |author=" in r["message"] and decisions() == []
+
+
+def test_requests_from_other_sites_are_refused(client, monkeypatch):
+    """Another website open in the browser can't drive the app: a form or plain-text POST (what a page from another site
+    can send without asking) and any request naming another host are refused, and nothing changes."""
+    monkeypatch.setattr(wiki, "send", lambda plan, items, **kw: ("dry-run ok", "would edit"))
+    client.post("/api/approve", json=dict(pageid=20, citation_id=3))
+    assert client.post("/api/send", data="x", content_type="text/plain").status_code == 415
+    assert client.post("/api/undo", data={"a": "1"}).status_code == 415
+    assert client.get("/api/status", base_url="http://rebind.example:4580").status_code == 403
+    r = client.post("/api/approve", json=dict(pageid=10, citation_id=1), base_url="http://rebind.example")
+    assert r.status_code == 403 and not r.json["ok"]
+    st = client.get("/api/status").json
+    assert not st["sending"] and [t["status"] for t in st["tray"]] == ["queued"] and decisions() == [(3, "dryrun", "approve")]
+
+
+def test_requests_must_name_the_apps_port(tmp_path, monkeypatch):
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "t.sqlite")
+    c = review.create_app(live=False, queue=[], restore=([], {}, []), eligible=set(), sports=set(), port=4580).test_client()
+    for url, code in (("http://127.0.0.1:4580", 200), ("http://localhost:4580", 200), ("http://127.0.0.1:4581", 403),
+                      ("http://127.0.0.1", 403), ("http://evil.example:4580", 403)):
+        assert c.get("/api/status", base_url=url).status_code == code, url
 
 
 def test_live_page_error_is_reported(client, monkeypatch):
@@ -194,7 +216,7 @@ def test_restored_edit_that_no_longer_builds_is_held_not_sent(tmp_path, monkeypa
     c = review.create_app(live=True, queue=[], restore=([art], {3: 1}, [])).test_client()
     t = c.get("/api/status").json["tray"][0]
     assert t["status"] == "refused" and t["returnable"] and "nobots" in t["detail"]
-    assert not c.post("/api/send").json["ok"]  # nothing queued to send
+    assert not c.post("/api/send", json={}).json["ok"]  # nothing queued to send
 
 
 # ---------- history and overall progress ----------
@@ -283,7 +305,7 @@ def test_approve_with_chosen_split_is_kept_and_restored(client, monkeypatch):
 def test_undo_split_approval_returns_plain_proposal(client):
     client.post("/api/approve", json=dict(pageid=20, citation_id=3, split=[["Smith", "Jane"]]))
     assert client.get("/api/status").json["tray"]
-    assert client.post("/api/undo").json["ok"]
+    assert client.post("/api/undo", json={}).json["ok"]
     assert client.get("/api/status").json["tray"] == []
     assert client.get("/api/article?pageid=20").json["rows"][0]["split"] is None
 

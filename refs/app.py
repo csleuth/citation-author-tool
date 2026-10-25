@@ -277,12 +277,25 @@ def evidence_row(it, res):
         raw=it["raw"], skip=res.get("reason", "") if res.get("status") == "skip" else "", already=res.get("already", False))
 
 
-def create_app(live=False, max_live=None, queue=None, restore=None, eligible=None, sports=None):
+def create_app(live=False, max_live=None, queue=None, restore=None, eligible=None, sports=None, port=None):
     """queue: a preloaded review queue, restore: unsent approvals in unsent_approvals() form, eligible: citation ids that
     qualify for live edits, sports: page ids the "hide sports" filter hides (all four for tests; by default they come
-    from the database).
+    from the database). port: the port every request must name (None: any port).
     By default the live queue is loaded and, in live mode, the tray is rebuilt from approvals no live edit has saved."""
     app = Flask(__name__)
+    local = ("127.0.0.1", "localhost")
+    hosts = {f"{h}:{port}" for h in local} if port else set(local)
+
+    @app.before_request
+    def own_page_only():
+        """Only the app's own page may drive it, not another website open in the same browser. A request must name this
+        machine as its host (a site that points its own name at 127.0.0.1, 'DNS rebinding', is refused), and a POST must
+        carry JSON, which another site's page can't send here without the browser asking the app first (it never agrees)."""
+        host = request.host if port else request.host.rsplit(":", 1)[0]
+        if host not in hosts:
+            return jsonify(dict(ok=False, message="Refused: the app only answers its own page at 127.0.0.1 or localhost.")), 403
+        if request.method == "POST" and not request.is_json:
+            return jsonify(dict(ok=False, message="Refused: the app only accepts requests from its own page.")), 415
     version = code_version()  # fixed at startup: the code this process is running
     q = load_queue() if queue is None else queue
     for rank, a in enumerate(q):
@@ -715,7 +728,7 @@ def create_app(live=False, max_live=None, queue=None, restore=None, eligible=Non
 def run(sample, run_name, live=False, max_live=None, port=4580):
     global QUEUE_RUN, GOLD
     QUEUE_RUN, GOLD = run_name, f"{sample}-gold"
-    app = create_app(live=live, max_live=max_live)
+    app = create_app(live=live, max_live=max_live, port=port)
     print(f"Review app ({'LIVE' if live else 'DRY RUN'}; {GOLD}, run {QUEUE_RUN}; live cap {max_live or 'none'}; code {code_version()}) at http://127.0.0.1:{port}")
     if live and not re.fullmatch(r"[0-9a-f]{40}", code_version()):
         print("WARNING: the running code is not exactly a git commit; live edits will be logged with this version string.")
