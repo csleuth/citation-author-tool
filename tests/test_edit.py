@@ -1,6 +1,6 @@
 """Offline tests for the dry-run edit builder (no network)."""
 import pytest
-from refs.edit import Skip, add_author_params, apply_to_page, choose_params, edit_summary, publication, split_name, verify_template
+from refs.edit import TOOL_LINK, Skip, add_author_params, apply_to_page, choose_params, edit_summary, publication, split_name, verify_template
 from collections import Counter
 
 ONE = [("last", "Smith"), ("first", "Jane")]
@@ -276,13 +276,19 @@ def ok(names, source):
      "Add authors to 2 citations, from the sources' bylines"),
 ])
 def test_edit_summary(results, summary):
-    assert edit_summary(results) == summary
+    assert edit_summary(results) == summary + TOOL_LINK
+
+
+def test_summary_links_the_tool_page_and_fits_wikipedias_limit():
+    assert TOOL_LINK == " (via [[User:CipherSleuth/Citation author tool|Citation author tool]])"
+    longest = edit_summary([ok(["A" * 115], "W"), ok(["B" * 115], "W")])  # 295 characters: the author list is kept
+    assert "A" * 115 in longest and longest.endswith(TOOL_LINK) and len(longest) < 500
 
 
 def test_summary_from_page():
     raw = "{{cite news |url=http://x |title=T |work=[[The Guardian]]}}"
     new, res = apply_to_page(f"A.<ref>{raw}</ref>", [dict(citation_id=1, raw=raw, names=["Jane Smith"])])
-    assert edit_summary(res) == "Add author to 1 citation, from the source's byline: Jane Smith (The Guardian)"
+    assert edit_summary(res) == "Add author to 1 citation, from the source's byline: Jane Smith (The Guardian)" + TOOL_LINK
 
 
 def test_blank_first_parameter_lends_no_space_to_the_new_values():

@@ -245,6 +245,7 @@ def apply_to_page(text, items):
 SOURCE_KEYS = ("work", "website", "newspaper", "magazine", "periodical", "journal", "publisher")
 SUMMARY_MAX = 300  # characters with the author list; Wikipedia cuts summaries at 500 codepoints
 SUMMARY_MAX_CITATIONS = 5
+TOOL_LINK = " (via [[User:CipherSleuth/Citation author tool|Citation author tool]])"  # ends every summary
 
 
 def publication(raw):
@@ -261,15 +262,16 @@ def publication(raw):
 
 
 def edit_summary(ok):
-    """ok: the page's applied results. 'Add author to 1 citation, from the source's byline: Jane Smith (The Guardian)'.
-    The author list is left off when it would make the summary long; the opening stays the same."""
+    """ok: the page's applied results. 'Add author to 1 citation, from the source's byline: Jane Smith (The Guardian)
+    (via [[User:CipherSleuth/Citation author tool|Citation author tool]])'.
+    The author list is left off when it would make the summary long; the opening and the tool link stay the same."""
     n = len(ok)
     authors = "authors" if sum(len(r["names"]) for r in ok) > 1 else "author"
     head = f"Add {authors} to 1 citation, from the source's byline" if n == 1 else \
         f"Add {authors} to {n} citations, from the sources' bylines"
     detail = "; ".join(", ".join(r["names"]) + (f" ({r['source']})" if r["source"] else "") for r in ok)
     full = f"{head}: {detail}"
-    return full if n <= SUMMARY_MAX_CITATIONS and len(full) <= SUMMARY_MAX else head
+    return (full if n <= SUMMARY_MAX_CITATIONS and len(full) <= SUMMARY_MAX else head) + TOOL_LINK
 
 
 # ---------- dry run against live pages ----------
