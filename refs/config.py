@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import requests
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
+DATA = Path(os.environ.get("REFS_DATA", ROOT / "data")).expanduser()  # REFS_DATA: keep data outside the code folder
 DB_PATH = Path(os.environ.get("REFS_DB", DATA / "refs.sqlite"))  # REFS_DB: test copy
 HTML_DIR = DATA / "html"
 LLM_CACHE = DATA / "llmcache"
